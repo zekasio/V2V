@@ -23,8 +23,8 @@ RULES:
 4. Do NOT transliterate — translate the meaning.
 5. Maintain any formatting (e.g., line breaks, capitalization style).
 6. For idiomatic expressions, find the closest English equivalent.
-7. Keep personal names (e.g. 'Kemal Güçlü') unchanged. Keep URLs/social handles unchanged.
-8. Translate political titles, slogans, party descriptions, dates, and topics (e.g. '2028 Yılı Cumhurbaşkanı Adayı' → '2028 Presidential Candidate', '7 AĞUSTOS 2026 CUMA SOHBETİ' → 'AUGUST 7, 2026 FRIDAY TALK', 'İMAN ETMEK ALLAH'A (C.C.) GÜVENMEKTİR' → 'TO BELIEVE IS TO TRUST IN ALLAH (SWT)').
+7. DO NOT translate 'Büyük Medeniyet Partisi', 'Kemal Güçlü', '2028 Yılı Cumhurbaşkanı Adayı', or URLs/social handles. Keep them in Turkish as-is.
+8. Translate other titles, dates, and topics (e.g. '7 AĞUSTOS 2026 CUMA SOHBETİ' → 'AUGUST 7, 2026 FRIDAY TALK', 'İMAN ETMEK ALLAH'A (C.C.) GÜVENMEKTİR' → 'TO HAVE FAITH IS TO TRUST IN ALLAH (C.C.)').
 
 Respond ONLY with a JSON object: {"translations": [{"original": "...", "translated": "..."}]}"""
 
@@ -106,12 +106,13 @@ class Translator:
         return response
 
     def _should_skip_translation(self, text: str, category: str = "overlay") -> bool:
-        """Check if text is a URL or brand handle that should not be translated."""
+        """Check if text is a proper noun, URL, or protected brand/party/title that should not be translated."""
         if not text or not text.strip():
             return True
         skip_patterns = [
+            "büyük medeniyet", "buyukmedeniyet", "2028", "kemal güçlü", "kemal güclü",
             "www.", ".com", ".org", ".net", "http://", "https://", "instagram.com", "youtube.com",
-            "twitter.com", "tiktok.com",
+            "twitter.com", "tiktok.com", "@kemalguclutr",
         ]
         lower = text.strip().lower()
         for pattern in skip_patterns:
