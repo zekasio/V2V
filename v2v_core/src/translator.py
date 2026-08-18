@@ -23,11 +23,8 @@ RULES:
 4. Do NOT transliterate — translate the meaning.
 5. Maintain any formatting (e.g., line breaks, capitalization style).
 6. For idiomatic expressions, find the closest English equivalent.
-7. DO NOT translate proper nouns, brand names, names of political parties, or people's names. Return them EXACTLY as-is in Turkish. Examples:
-   - 'Büyük Medeniyet Partisi' → 'Büyük Medeniyet Partisi' (do NOT change)
-   - 'Kemal Güçlü' → 'Kemal Güçlü' (do NOT change)
-   - 'buyukmedeniyetpartisi.org' → 'buyukmedeniyetpartisi.org' (do NOT change)
-   - Any URL, website, social media handle → keep as-is
+7. Keep personal names (e.g. 'Kemal Güçlü') unchanged. Keep URLs/social handles unchanged.
+8. Translate political titles, slogans, party descriptions, dates, and topics (e.g. '2028 Yılı Cumhurbaşkanı Adayı' → '2028 Presidential Candidate', '7 AĞUSTOS 2026 CUMA SOHBETİ' → 'AUGUST 7, 2026 FRIDAY TALK', 'İMAN ETMEK ALLAH'A (C.C.) GÜVENMEKTİR' → 'TO BELIEVE IS TO TRUST IN ALLAH (SWT)').
 
 Respond ONLY with a JSON object: {"translations": [{"original": "...", "translated": "..."}]}"""
 
@@ -109,16 +106,12 @@ class Translator:
         return response
 
     def _should_skip_translation(self, text: str, category: str = "overlay") -> bool:
-        """Check if text is a proper noun, URL, brand name, or subtitle that should not be translated."""
-        # Subtitles are handled by SRT, not translated via OCR
-        if category == "subtitle":
+        """Check if text is a URL or brand handle that should not be translated."""
+        if not text or not text.strip():
             return True
         skip_patterns = [
-            "büyük medeniyet", "buyukmedeniyet", "kemal güclü", "kemal güçlü",
-            "genel başkan", "cumhurbaşkanı", "adayı", "partisi",
-            "2028", "nisan", "temmuz", "cuma sohbeti",
-            "www.", ".com", ".org", ".net", "http", "instagram", "youtube",
-            "twitter", "tiktok", "abone ol", "subscribe",
+            "www.", ".com", ".org", ".net", "http://", "https://", "instagram.com", "youtube.com",
+            "twitter.com", "tiktok.com",
         ]
         lower = text.strip().lower()
         for pattern in skip_patterns:

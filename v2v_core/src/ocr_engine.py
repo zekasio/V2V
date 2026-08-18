@@ -105,30 +105,7 @@ class OCREngine:
                 continue
             timestamp = frame_idx / fps
             
-            # Visual similarity check to skip Gemini call for static scenes
-            if last_frame is not None:
-                diff = self._compute_frame_diff(last_frame, frame)
-                if diff < 4.0:
-                    # Visually similar: reuse last frame's detections with updated timing
-                    copied_dets = []
-                    for det in last_detections:
-                        copied_dets.append(DetectedText(
-                            text=det.text,
-                            confidence=det.confidence,
-                            x=det.x, y=det.y, width=det.width, height=det.height,
-                            timestamp=round(timestamp, 3),
-                            frame_index=frame_idx,
-                            bbox_points=det.bbox_points,
-                            translation=det.translation,
-                            category=det.category
-                        ))
-                    result.detections.extend(copied_dets)
-                    # We keep last_frame as this frame to compare sequentially
-                    last_frame = frame
-                    last_detections = copied_dets
-                    continue
-            
-            # Run fresh detection
+            # Run detection on keyframe
             detections = self._detect_text_in_frame(frame, timestamp, frame_idx)
             result.detections.extend(detections)
             
@@ -155,14 +132,10 @@ class OCREngine:
         frames: set[int] = set()
 
         if settings.fast_template_mode:
-            frames.add(0)
-            if total_frames > 500:
-                frames.add(500)
-            if total_frames > 2000:
-                frames.add(2000)
-            if len(frames) < 3 and total_frames > 10:
-                frames.add(total_frames // 2)
-                frames.add(total_frames - 1)
+            step = max(1, int(fps * 3.0))
+            for f in range(0, total_frames, step):
+                frames.add(f)
+            frames.add(total_frames - 1)
             logger.info("Fast template mode: selected keyframes %s", sorted(list(frames)))
             return sorted(list(frames))
 

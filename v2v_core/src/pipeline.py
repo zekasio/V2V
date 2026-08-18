@@ -1,11 +1,9 @@
-"""
-Pipeline — orchestrates the full video localization workflow in a single-pass frame processor.
-"""
-from __future__ import annotations
+import os
 import asyncio
 import json
 import shutil
 import time
+import numpy as np
 from pathlib import Path
 from src.config import settings
 from src.logger import get_logger
@@ -76,25 +74,12 @@ class LocalizationPipeline:
             ocr_result = self._load_detections(dets_cache)
             has_dynamic_subtitles = self._has_dynamic_subtitles(ocr_result)
         else:
-            # Quick scan: only 3 frames to detect subtitles
             settings.fast_template_mode = True
-            logger.info("━━ Step 2a/6: Quick subtitle detection (3 frames) ━━")
-            quick_result = await asyncio.get_running_loop().run_in_executor(
+            logger.info("━━ Step 2/6: Keyframe OCR detection ━━")
+            ocr_result = await asyncio.get_running_loop().run_in_executor(
                 None, self._ocr.detect_text_in_video, video_path,
             )
-            has_dynamic_subtitles = self._has_dynamic_subtitles(quick_result)
-
-            if has_dynamic_subtitles:
-                # Subtitles found — re-run full OCR with scene detection
-                settings.fast_template_mode = False
-                logger.info("━━ Step 2b/6: Full OCR with scene detection ━━")
-                ocr_result = await asyncio.get_running_loop().run_in_executor(
-                    None, self._ocr.detect_text_in_video, video_path,
-                )
-            else:
-                # No dynamic subtitles — keep the quick result
-                ocr_result = quick_result
-
+            has_dynamic_subtitles = self._has_dynamic_subtitles(ocr_result)
             self._save_detections(ocr_result, dets_cache)
 
         logger.info("Auto-detection: dynamic subtitles = %s", has_dynamic_subtitles)
@@ -540,30 +525,21 @@ class LocalizationPipeline:
         fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
 
-        subtitle_dets = [d for d in ocr_result.detections if getattr(d, "category", "overlay") == "subtitle"]
+        # Separate bottom speech subtitles (y >= 76% frame height) from upper/middle titles & banners
+        bottom_subs = [d for d in ocr_result.detections if getattr(d, "category", "overlay") == "subtitle" and d.y >= int(fh * 0.76)]
         has_subtitles = False
         subtitle_box = None
 
-        if subtitle_dets:
-            texts_by_frame = {}
-            for d in subtitle_dets:
-                texts_by_frame.setdefault(d.frame_index, []).append(d.text)
-            unique_frame_texts = [tuple(sorted(t)) for t in texts_by_frame.values()]
-            if len(set(unique_frame_texts)) > 1:
-                has_subtitles = True
-                sub_x1 = min(d.x for d in subtitle_dets)
-                sub_y1 = min(d.y for d in subtitle_dets)
-                sub_x2 = max(d.x + d.width for d in subtitle_dets)
-                sub_y2 = max(d.y + d.height for d in subtitle_dets)
-                margin = 15
-                sub_x1 = max(0, sub_x1 - margin)
-                sub_y1 = max(0, sub_y1 - margin)
-                sub_x2 = min(fw, sub_x2 + margin)
-                sub_y2 = min(fh, sub_y2 + margin)
-                subtitle_box = (sub_x1, sub_y1, sub_x2 - sub_x1, sub_y2 - sub_y1)
-                logger.info("Dynamic subtitles detected at box: %s", subtitle_box)
+        if bottom_subs and srt_path and srt_path.exists():
+            has_subtitles = True
+            sub_x1 = max(10, min(d.x for d in bottom_subs) - 20)
+            sub_y1 = max(int(fh * 0.76), min(d.y for d in bottom_subs) - 15)
+            sub_x2 = min(fw - 10, max(d.x + d.width for d in bottom_subs) + 20)
+            sub_y2 = min(int(fh * 0.90), max(d.y + d.height for d in bottom_subs) + 15)
+            subtitle_box = (sub_x1, sub_y1, sub_x2 - sub_x1, sub_y2 - sub_y1)
+            logger.info("Dynamic bottom subtitles detected at box: %s", subtitle_box)
 
-        # 2. Build static overlay render list (skip subtitles and unchanged text)
+        # 2. Build static overlay render list (skip unchanged text and bottom speech subtitles)
         import unicodedata
         def _norm(text: str) -> str:
             mapped = text.replace('İ', 'i').replace('I', 'i').replace('ı', 'i')
@@ -573,8 +549,8 @@ class LocalizationPipeline:
         trans_map = {id(t[0]): t[1] for t in translations}
         static_render_list = []
         for det in ocr_result.detections:
-            cat = getattr(det, "category", "overlay")
-            if cat == "subtitle" and has_subtitles:
+            # Bottom speech subtitles are covered by subtitle_box and rendered dynamically via FFmpeg drawtext
+            if has_subtitles and det.y >= int(fh * 0.76) and getattr(det, "category", "overlay") == "subtitle":
                 continue
             translated_text = trans_map.get(id(det), det.text)
             if _norm(translated_text) == _norm(det.text):
@@ -596,7 +572,6 @@ class LocalizationPipeline:
 
         # 3. Check for end-screen (subscribe/abone ol) — stop processing after it starts
         end_frame = None
-        import unicodedata
         def _norm2(text: str) -> str:
             mapped = text.replace('İ', 'i').replace('I', 'i').replace('ı', 'i')
             normalized = unicodedata.normalize('NFKD', mapped)
@@ -648,21 +623,27 @@ class LocalizationPipeline:
             cropped_pil = Image.fromarray(cropped_rgb).convert("RGBA")
             template_img.paste(cropped_pil, (x1, y1))
 
-        # Cover subtitle region with background color
+        # Helper function to sample perimeter background color
+        def _estimate_perimeter_bg(frame: np.ndarray, box: tuple[int, int, int, int]) -> tuple[int, int, int]:
+            bx, by, bw, bh = box
+            y1, y2 = max(0, by), min(frame.shape[0], by + bh)
+            x1, x2 = max(0, bx), min(frame.shape[1], bx + bw)
+            reg = frame[y1:y2, x1:x2]
+            if reg.size == 0:
+                return (255, 255, 255)
+            border = np.vstack([reg[0, :], reg[-1, :], reg[:, 0], reg[:, -1]])
+            med = np.median(border, axis=0).astype(int)
+            return (int(med[2]), int(med[1]), int(med[0]))  # BGR to RGB
+
+        # Cover subtitle region with perimeter-sampled background color
         if has_subtitles and subtitle_box:
             from PIL import ImageDraw
-            dummy_sub = DetectedText(
-                text="", confidence=1.0,
-                x=subtitle_box[0], y=subtitle_box[1],
-                width=subtitle_box[2], height=subtitle_box[3],
-                timestamp=0.0, frame_index=0
-            )
-            rgb_bg = self._renderer.estimate_bg_color(first_frame, dummy_sub)
+            rgb_bg = _estimate_perimeter_bg(first_frame, subtitle_box)
             draw = ImageDraw.Draw(template_img)
             draw.rectangle([
                 subtitle_box[0], subtitle_box[1],
                 subtitle_box[0] + subtitle_box[2], subtitle_box[1] + subtitle_box[3]
-            ], fill=(rgb_bg[2], rgb_bg[1], rgb_bg[0], 255))
+            ], fill=(rgb_bg[0], rgb_bg[1], rgb_bg[2], 255))
 
         # Save template
         temp_dir = settings.temp_path / video_path.stem
@@ -695,28 +676,13 @@ class LocalizationPipeline:
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 ]
                 font_path = next((p for p in font_candidates if os.path.exists(p)), "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-                font_size = 20
+                font_size = 22
 
                 # Sample subtitle bg color to pick text color
-                cap = cv2.VideoCapture(str(video_path))
-                bg_is_light = True  # default
-                sub_samples = [d for d in ocr_result.detections if getattr(d, "category", "overlay") == "subtitle"]
-                if sub_samples and cap.isOpened():
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, sub_samples[0].frame_index)
-                    ret_s, frame_s = cap.read()
-                    if ret_s:
-                        dummy_sub = DetectedText(
-                            text="", confidence=1.0,
-                            x=subtitle_box[0], y=subtitle_box[1],
-                            width=subtitle_box[2], height=subtitle_box[3],
-                            timestamp=0.0, frame_index=0
-                        )
-                        rgb_bg = self._renderer.estimate_bg_color(frame_s, dummy_sub)
-                        # luminance: 0.299*R + 0.587*G + 0.114*B
-                        lum = 0.299 * rgb_bg[0] + 0.587 * rgb_bg[1] + 0.114 * rgb_bg[2]
-                        bg_is_light = lum > 128
-                        logger.info("Subtitle bg color: %s (lum=%.0f, %s)", rgb_bg, lum, "light" if bg_is_light else "dark")
-                cap.release()
+                rgb_bg = _estimate_perimeter_bg(first_frame, subtitle_box)
+                lum = 0.299 * rgb_bg[0] + 0.587 * rgb_bg[1] + 0.114 * rgb_bg[2]
+                bg_is_light = lum > 128
+                logger.info("Subtitle bg color: %s (lum=%.0f, %s)", rgb_bg, lum, "light" if bg_is_light else "dark")
 
                 text_color = "black" if bg_is_light else "white"
                 border_color = "white" if bg_is_light else "black"
