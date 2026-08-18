@@ -688,7 +688,13 @@ class LocalizationPipeline:
                 subs = pysrt.open(str(srt_path), encoding="utf-8")
                 sub_x, sub_y = subtitle_box[0], subtitle_box[1]
                 sub_w, sub_h = subtitle_box[2], subtitle_box[3]
-                font_path = "/system/fonts/Roboto-Regular.ttf"
+                font_candidates = [
+                    "/system/fonts/Roboto-Regular.ttf",
+                    "/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                ]
+                font_path = next((p for p in font_candidates if os.path.exists(p)), "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
                 font_size = 20
 
                 # Sample subtitle bg color to pick text color

@@ -1,0 +1,14 @@
+# Environment
+.env
+*.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Processing / Media
+v2v_core/output/
+v2v_core/temp/
+v2v_core/logs/*.log
