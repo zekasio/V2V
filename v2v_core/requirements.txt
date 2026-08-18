@@ -1,0 +1,39 @@
+# V2V - Video to Video Localization Pipeline
+# Python 3.12+
+
+# --- Core ---
+python-dotenv>=1.0.0
+click>=8.1.7
+watchdog>=4.0.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# --- Murf AI Dubbing ---
+murf>=1.0.0
+httpx>=0.27.0
+tenacity>=8.3.0
+
+# --- OCR & Vision ---
+# opencv-python-headless>=4.10.0
+numpy>=1.26.0
+
+# --- Inpainting (Optional / Skipped in Fast Mode) ---
+# Removed PyTorch & LaMa for Termux optimization
+
+
+# --- Translation (LLM) ---
+google-genai>=1.0.0
+
+# --- Text Rendering ---
+Pillow>=10.3.0
+
+# --- Video Processing ---
+ffmpeg-python>=0.2.0
+scenedetect[opencv]>=0.6.4
+
+# --- Subtitle ---
+pysrt>=1.1.2
+
+# --- Async & Utils ---
+aiofiles>=24.1.0
+rich>=13.7.0

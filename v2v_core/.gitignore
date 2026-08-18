@@ -1,0 +1,42 @@
+# V2V .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.venv/
+env/
+venv/
+
+# Processing directories (large files)
+input/*.mp4
+input/*.mov
+input/*.avi
+output/
+temp/
+
+# Logs
+logs/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models (downloaded at runtime)
+*.pth
+*.onnx
+*.pdparams
