@@ -132,11 +132,11 @@ class OCREngine:
         frames: set[int] = set()
 
         if settings.fast_template_mode:
-            step = max(1, int(fps * 3.0))
-            for f in range(0, total_frames, step):
-                frames.add(f)
-            frames.add(total_frames - 1)
-            logger.info("Fast template mode: selected keyframes %s", sorted(list(frames)))
+            count = min(6, max(3, int(total_frames / max(1, fps * 15.0))))
+            indices = np.linspace(0, total_frames - 1, max(3, min(6, count)), dtype=int)
+            for idx in indices:
+                frames.add(int(idx))
+            logger.info("Fast template mode: selected %d keyframes %s", len(frames), sorted(list(frames)))
             return sorted(list(frames))
 
         if self._use_scene_detection:
