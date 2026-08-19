@@ -671,12 +671,11 @@ class LocalizationPipeline:
                 sub_w, sub_h = subtitle_box[2], subtitle_box[3]
                 font_candidates = [
                     "/system/fonts/Roboto-Regular.ttf",
-                    "/data/data/com.termux/files/usr/share/fonts/TTF/DejaVuSans.ttf",
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 ]
                 font_path = next((p for p in font_candidates if os.path.exists(p)), "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-                font_size = 22
+                font_size = max(14, int(22 * (fh / 1280.0)))
 
                 # Sample subtitle bg color to pick text color
                 rgb_bg = _estimate_perimeter_bg(first_frame, subtitle_box)
