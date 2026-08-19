@@ -6,9 +6,21 @@ venv/
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Temporary / Test outputs
+test_output/
+*.zip
+.tempmediaStorage/
 
 # Processing / Media
 v2v_core/output/
 v2v_core/temp/
 v2v_core/logs/*.log
+*.log
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
