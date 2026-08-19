@@ -24,3 +24,4 @@ v2v_core/logs/*.log
 .DS_Store
 .vscode/
 .idea/
+*.mp4
